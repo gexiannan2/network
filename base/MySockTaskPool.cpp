@@ -20,7 +20,8 @@
 #else
 #include <poll.h>
 using PollFd = pollfd;
-static int poll_sockets(PollFd* fds, std::size_t count, int timeout_ms)
+
+static int poll_sockets(PollFd *fds, std::size_t count, int timeout_ms)
 {
     return ::poll(fds, static_cast<nfds_t>(count), timeout_ms);
 }
@@ -36,8 +37,7 @@ namespace MyNameSpace
 #if defined(__linux__)
                 epoll_fd_ = ::epoll_create1(EPOLL_CLOEXEC);
 #elif defined(_WIN32)
-                completion_port_ = ::CreateIoCompletionPort(
-                    INVALID_HANDLE_VALUE, nullptr, 0, 0);
+                completion_port_ = ::CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 0);
 #endif
             }
 
@@ -69,12 +69,13 @@ namespace MyNameSpace
 #endif
             }
 
-            bool enqueue(const std::shared_ptr<MySockTask>& task) override
+            bool enqueue(const std::shared_ptr<MySockTask> &task) override
             {
                 if (!task)
                 {
                     return false;
                 }
+
                 std::lock_guard<std::mutex> lock(mutex_);
                 if (count_.load() >= cap_)
                 {
@@ -111,7 +112,7 @@ namespace MyNameSpace
                     pending.swap(pending_);
                 }
 
-                for (const auto& task : pending)
+                for (const auto &task : pending)
                 {
                     MySockTaskManager::getInstance().removeTask(task->getId());
                 }
@@ -136,7 +137,7 @@ namespace MyNameSpace
                         newly_accepted.swap(pending_);
                     }
 
-                    for (auto& task : newly_accepted)
+                    for (auto &task : newly_accepted)
                     {
                         const net::Socket fd = task->socket();
                         epoll_event interest{};
@@ -153,8 +154,7 @@ namespace MyNameSpace
                         clients.emplace(fd, std::move(task));
                     }
 
-                    const int ready = ::epoll_wait(
-                        epoll_fd, events.data(), static_cast<int>(events.size()), 10);
+                    const int ready = ::epoll_wait(epoll_fd, events.data(), static_cast<int>(events.size()), 10);
                     if (ready < 0)
                     {
                         if (net::interrupted(net::last_error()))
@@ -168,14 +168,14 @@ namespace MyNameSpace
 
                     for (int index = 0; index < ready; ++index)
                     {
-                        const epoll_event& event = events[static_cast<std::size_t>(index)];
+                        const epoll_event &event = events[static_cast<std::size_t>(index)];
                         auto iter = clients.find(event.data.fd);
                         if (iter == clients.end())
                         {
                             continue;
                         }
 
-                        const auto& task = iter->second;
+                        const auto &task = iter->second;
                         bool keep = true;
 
                         if ((event.events & (EPOLLIN | EPOLLRDHUP | EPOLLHUP)) != 0)
@@ -233,8 +233,7 @@ namespace MyNameSpace
                             interest.data.fd = event.data.fd;
                             interest.events = EPOLLERR | EPOLLHUP;
 
-                            if (!task->peerClosed() &&
-                                task->pendingBytes() < net::max_pending_bytes / 2)
+                            if (!task->peerClosed() && task->pendingBytes() < net::max_pending_bytes / 2)
                             {
                                 interest.events |= EPOLLIN | EPOLLRDHUP;
                             }
@@ -244,8 +243,7 @@ namespace MyNameSpace
                                 interest.events |= EPOLLOUT;
                             }
 
-                            if (::epoll_ctl(epoll_fd, EPOLL_CTL_MOD,
-                                            event.data.fd, &interest) != 0)
+                            if (::epoll_ctl(epoll_fd, EPOLL_CTL_MOD, event.data.fd, &interest) != 0)
                             {
                                 keep = false;
                                 MySockTaskManager::getInstance().recordIoError();
@@ -267,13 +265,11 @@ namespace MyNameSpace
                     {
                         for (auto iter = clients.begin(); iter != clients.end();)
                         {
-                            const auto& task = iter->second;
+                            const auto &task = iter->second;
                             const std::uint64_t last_activity = task->lastActivity();
-                            if (now > last_activity &&
-                                now - last_activity > 120ULL * 1000000000ULL)
+                            if (now > last_activity && now - last_activity > 120ULL * 1000000000ULL)
                             {
-                                ::epoll_ctl(epoll_fd, EPOLL_CTL_DEL,
-                                            iter->first, nullptr);
+                                ::epoll_ctl(epoll_fd, EPOLL_CTL_DEL, iter->first, nullptr);
                                 MySockTaskManager::getInstance().removeTask(task->getId());
                                 iter = clients.erase(iter);
                                 --count_;
@@ -289,7 +285,7 @@ namespace MyNameSpace
                     }
                 }
 
-                for (const auto& entry : clients)
+                for (const auto &entry : clients)
                 {
                     MySockTaskManager::getInstance().removeTask(entry.second->getId());
                 }
@@ -301,28 +297,29 @@ namespace MyNameSpace
 #elif defined(_WIN32)
             struct IocpConnection
             {
-                std::shared_ptr<MySockTask> task;
-                net::Socket fd = net::invalid_socket;
-                bool closing = false;
-                bool receive_pending = false;
-                bool send_pending = false;
-                int last_post_error = 0;
+                public:
+                    std::shared_ptr<MySockTask> task;
+                    net::Socket fd = net::invalid_socket;
+                    bool closing = false;
+                    bool receive_pending = false;
+                    bool send_pending = false;
+                    int last_post_error = 0;
             };
 
             struct IocpOperation
             {
-                OVERLAPPED overlapped{};
-                WSABUF buffer{};
-                DWORD flags = 0;
-                std::vector<char> storage;
-                std::shared_ptr<IocpConnection> connection;
-                bool is_send = false;
+                public:
+                    OVERLAPPED overlapped{};
+                    WSABUF buffer{};
+                    DWORD flags = 0;
+                    std::vector<char> storage;
+                    std::shared_ptr<IocpConnection> connection;
+                    bool is_send = false;
             };
 
             using ConnectionMap = std::unordered_map<net::Socket, std::shared_ptr<IocpConnection>>;
 
-            void closeConnection(const std::shared_ptr<IocpConnection>& conn,
-                                 ConnectionMap& connections)
+            void closeConnection(const std::shared_ptr<IocpConnection> &conn, ConnectionMap &connections)
             {
                 if (conn->closing)
                 {
@@ -338,7 +335,7 @@ namespace MyNameSpace
                 --count_;
             }
 
-            bool postReceive(const std::shared_ptr<IocpConnection>& conn)
+            bool postReceive(const std::shared_ptr<IocpConnection> &conn)
             {
                 if (conn->closing || conn->receive_pending || conn->task->peerClosed() ||
                     conn->task->pendingBytes() >= net::max_pending_bytes / 2)
@@ -355,9 +352,8 @@ namespace MyNameSpace
                 conn->receive_pending = true;
                 ++outstanding_;
                 DWORD received = 0;
-                const int result = ::WSARecv(conn->fd, &operation->buffer, 1,
-                                              &received, &operation->flags,
-                                              &operation->overlapped, nullptr);
+                const int result = ::WSARecv(conn->fd, &operation->buffer, 1, &received, &operation->flags,
+                                             &operation->overlapped, nullptr);
                 if (result == SOCKET_ERROR)
                 {
                     const int error = ::WSAGetLastError();
@@ -374,7 +370,7 @@ namespace MyNameSpace
                 return true;
             }
 
-            bool postSend(const std::shared_ptr<IocpConnection>& conn)
+            bool postSend(const std::shared_ptr<IocpConnection> &conn)
             {
                 if (conn->closing || conn->send_pending || !conn->task->pendingWrite())
                 {
@@ -396,9 +392,8 @@ namespace MyNameSpace
                 conn->send_pending = true;
                 ++outstanding_;
                 DWORD transferred = 0;
-                const int result = ::WSASend(conn->fd, &operation->buffer, 1,
-                                              &transferred, 0,
-                                              &operation->overlapped, nullptr);
+                const int result =
+                    ::WSASend(conn->fd, &operation->buffer, 1, &transferred, 0, &operation->overlapped, nullptr);
                 if (result == SOCKET_ERROR)
                 {
                     const int error = ::WSAGetLastError();
@@ -415,12 +410,10 @@ namespace MyNameSpace
                 return true;
             }
 
-            void handleCompletion(OVERLAPPED* overlapped, bool ok,
-                                  DWORD transferred, DWORD completion_error,
-                                  ConnectionMap& connections)
+            void handleCompletion(OVERLAPPED *overlapped, bool ok, DWORD transferred, DWORD completion_error,
+                                  ConnectionMap &connections)
             {
-                std::unique_ptr<IocpOperation> operation(
-                    reinterpret_cast<IocpOperation*>(overlapped));
+                std::unique_ptr<IocpOperation> operation(reinterpret_cast<IocpOperation *>(overlapped));
                 const auto conn = operation->connection;
                 --outstanding_;
 
@@ -448,6 +441,7 @@ namespace MyNameSpace
                     {
                         MySockTaskManager::getInstance().recordIoError();
                     }
+
                     closeConnection(conn, connections);
                     return;
                 }
@@ -468,8 +462,7 @@ namespace MyNameSpace
                 }
                 else
                 {
-                    if (!conn->task->appendReceived(operation->storage.data(), transferred) ||
-                        conn->task->getMsg() < 0)
+                    if (!conn->task->appendReceived(operation->storage.data(), transferred) || conn->task->getMsg() < 0)
                     {
                         MySockTaskManager::getInstance().recordProtocolError();
                         closeConnection(conn, connections);
@@ -487,12 +480,12 @@ namespace MyNameSpace
                     {
                         MySockTaskManager::getInstance().recordIoError();
                     }
+
                     closeConnection(conn, connections);
                     return;
                 }
 
-                if (conn->task->peerClosed() && !conn->task->pendingWrite() &&
-                    !conn->send_pending)
+                if (conn->task->peerClosed() && !conn->task->pendingWrite() && !conn->send_pending)
                 {
                     closeConnection(conn, connections);
                 }
@@ -512,11 +505,11 @@ namespace MyNameSpace
                         newly_accepted.swap(pending_);
                     }
 
-                    for (auto& task : newly_accepted)
+                    for (auto &task : newly_accepted)
                     {
                         const net::Socket fd = task->socket();
-                        HANDLE associated = ::CreateIoCompletionPort(
-                            reinterpret_cast<HANDLE>(fd), completion_port, 0, 0);
+                        HANDLE associated =
+                            ::CreateIoCompletionPort(reinterpret_cast<HANDLE>(fd), completion_port, 0, 0);
                         if (associated != completion_port)
                         {
                             MySockTaskManager::getInstance().recordIoError();
@@ -540,20 +533,20 @@ namespace MyNameSpace
                             {
                                 MySockTaskManager::getInstance().recordIoError();
                             }
+
                             closeConnection(conn, connections);
                         }
                     }
 
                     DWORD transferred = 0;
                     ULONG_PTR key = 0;
-                    OVERLAPPED* overlapped = nullptr;
-                    const BOOL success = ::GetQueuedCompletionStatus(
-                        completion_port, &transferred, &key, &overlapped, 10);
+                    OVERLAPPED *overlapped = nullptr;
+                    const BOOL success =
+                        ::GetQueuedCompletionStatus(completion_port, &transferred, &key, &overlapped, 10);
                     const DWORD completion_error = success ? 0 : ::GetLastError();
                     if (overlapped != nullptr)
                     {
-                        handleCompletion(overlapped, success != FALSE,
-                                         transferred, completion_error, connections);
+                        handleCompletion(overlapped, success != FALSE, transferred, completion_error, connections);
                     }
                     else if (!success && completion_error != WAIT_TIMEOUT)
                     {
@@ -589,14 +582,13 @@ namespace MyNameSpace
                 {
                     DWORD transferred = 0;
                     ULONG_PTR key = 0;
-                    OVERLAPPED* overlapped = nullptr;
-                    const BOOL success = ::GetQueuedCompletionStatus(
-                        completion_port, &transferred, &key, &overlapped, 5000);
+                    OVERLAPPED *overlapped = nullptr;
+                    const BOOL success =
+                        ::GetQueuedCompletionStatus(completion_port, &transferred, &key, &overlapped, 5000);
                     const DWORD completion_error = success ? 0 : ::GetLastError();
                     if (overlapped != nullptr)
                     {
-                        handleCompletion(overlapped, success != FALSE,
-                                         transferred, completion_error, connections);
+                        handleCompletion(overlapped, success != FALSE, transferred, completion_error, connections);
                     }
                     else
                     {
@@ -620,7 +612,7 @@ namespace MyNameSpace
                 {
                     {
                         std::lock_guard<std::mutex> lock(mutex_);
-                        for (auto& task : pending_)
+                        for (auto &task : pending_)
                         {
                             clients.push_back(std::move(task));
                         }
@@ -636,13 +628,12 @@ namespace MyNameSpace
 
                     std::vector<PollFd> fds;
                     fds.reserve(clients.size());
-                    for (const auto& task : clients)
+                    for (const auto &task : clients)
                     {
                         PollFd descriptor{};
                         descriptor.fd = task->socket();
 
-                        if (!task->peerClosed() &&
-                            task->pendingBytes() < net::max_pending_bytes / 2)
+                        if (!task->peerClosed() && task->pendingBytes() < net::max_pending_bytes / 2)
                         {
                             descriptor.events |= POLLIN;
                         }
@@ -672,7 +663,7 @@ namespace MyNameSpace
                     for (std::size_t i = clients.size(); i > 0; --i)
                     {
                         const std::size_t index = i - 1;
-                        auto& task = clients[index];
+                        auto &task = clients[index];
                         const short revents = fds[index].revents;
                         bool keep = true;
 
@@ -710,8 +701,7 @@ namespace MyNameSpace
                             keep = false;
                         }
 
-                        if (keep && now > task->lastActivity() &&
-                            now - task->lastActivity() > 120ULL * 1000000000ULL)
+                        if (keep && now > task->lastActivity() && now - task->lastActivity() > 120ULL * 1000000000ULL)
                         {
                             keep = false;
                         }
@@ -726,7 +716,7 @@ namespace MyNameSpace
                     }
                 }
 
-                for (const auto& task : clients)
+                for (const auto &task : clients)
                 {
                     MySockTaskManager::getInstance().removeTask(task->getId());
                 }
@@ -746,8 +736,7 @@ namespace MyNameSpace
 #endif
     };
 
-    MySockTaskPool::MySockTaskPool(int ioCount, int maxConnPerIo)
-        : io_count_(ioCount), max_conn_per_io_(maxConnPerIo)
+    MySockTaskPool::MySockTaskPool(int ioCount, int maxConnPerIo) : io_count_(ioCount), max_conn_per_io_(maxConnPerIo)
     {
     }
 
@@ -770,14 +759,14 @@ namespace MyNameSpace
 
         for (int i = 0; i < io_count_; ++i)
         {
-            auto worker = std::unique_ptr<IoBackend>(
-                new MyIoThread(static_cast<std::size_t>(max_conn_per_io_)));
+            auto worker = std::unique_ptr<IoBackend>(new MyIoThread(static_cast<std::size_t>(max_conn_per_io_)));
             if (!worker->ready() || !worker->start())
             {
                 pool_.joinAll();
                 pool_.delAllThread();
                 return false;
             }
+
             pool_.putThread(std::move(worker));
         }
 
@@ -785,18 +774,18 @@ namespace MyNameSpace
         return true;
     }
 
-    bool MySockTaskPool::addTask(const std::shared_ptr<MySockTask>& task)
+    bool MySockTaskPool::addTask(const std::shared_ptr<MySockTask> &task)
     {
         if (!running_)
         {
             return false;
         }
 
-        IoBackend* chosen = nullptr;
+        IoBackend *chosen = nullptr;
         std::size_t min_load = std::numeric_limits<std::size_t>::max();
         for (std::size_t index = 0; index < pool_.getThreadCount(); ++index)
         {
-            auto* worker = static_cast<IoBackend*>(pool_.getThreadByIndex(index));
+            auto *worker = static_cast<IoBackend *>(pool_.getThreadByIndex(index));
             if (worker->load() < min_load)
             {
                 chosen = worker;

@@ -10,5 +10,14 @@ AllowShortIfStatementsOnASingleLine: Never
 AllowShortLoopsOnASingleLine: false
 AllowShortBlocksOnASingleLine: Never
 AllowShortFunctionsOnASingleLine: None
+AllowShortLambdasOnASingleLine: None
+AllowShortEnumsOnASingleLine: false
 AllowShortCaseLabelsOnASingleLine: false
+InsertBraces: true
+RemoveBracesLLVM: false
+SeparateDefinitionBlocks: Always
+SortIncludes: Never
+SortUsingDeclarations: Never
+ReflowComments: false
+FixNamespaceComments: false
 ColumnLimit: 120
